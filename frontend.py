@@ -1,10 +1,9 @@
-from multiprocessing import Queue
 from threading import Lock
 from itertools import product
 import json
 
-queue = Queue()
-queue_lock = Lock()
+stack = []  # Pilha ao invés de fila
+stack_lock = Lock()
 
 
 def main():
@@ -30,11 +29,11 @@ def combine():
             "learning_rate": learning_rate,
             "weight_decay": weight_decay
         }, indent=4)  # string
-        queue.put(json_data)
+        stack.append(json_data)  # Empilha o elemento
 
 
 def processRequest(receivedJson):
-    with queue_lock:
+    with stack_lock:
         status = receivedJson.get('status')
         if status in ['ONLINE', 'FINISHED']:
             combinations = []
@@ -42,39 +41,38 @@ def processRequest(receivedJson):
                 print("Retorno do worker: " + json.dumps(receivedJson))
                 with open("results.txt", "a") as file:
                     file.write(json.dumps(receivedJson) + "\n")
-                if not queue.empty():
-                    item = queue.get()
+
+                if len(stack) > 0:
+                    item = stack.pop()  # Retira o último elemento (LIFO)
                     combinations.append(item)
                     data_to_send = {
                         "machine_id": "server", "data": combinations}
 
-                    # json_loads = json.loads(data_to_send)
                     data_to_send["data"] = [json.loads(
                         item) for item in data_to_send["data"]]
                     json_result = json.dumps(data_to_send, indent=4)
 
                     print("Retorno do json_result: " + json_result)
-
                     return json_result
                 else:
                     return None
 
             if status == 'ONLINE':
+
                 num_cores = receivedJson.get('num_cores')
+
                 if num_cores:
                     for _ in range(num_cores):
-                        if not queue.empty():
-                            combinations.append(queue.get())
+                        if len(stack) > 0:
+                            combinations.append(stack.pop())  # Retira do topo
                         else:
                             break
 
                     data_dict = {"machine_id": "server", "data": combinations}
-
                     data_dict["data"] = [json.loads(
                         item) for item in data_dict["data"]]
 
                     json_result = json.dumps(data_dict, indent=4)
-
                     return json_result
 
 
